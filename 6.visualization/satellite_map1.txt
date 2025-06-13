@@ -1,0 +1,69 @@
+import folium
+import pandas as pd
+import os
+
+# === INPUT PATHS ===
+csv_path = r"C:\\Users\\M.P\\Downloads\\road_project_final\\final_output1.csv"
+output_map_path = r"C:\\Users\\M.P\\Downloads\\mappp\\satellite_map1.html"
+os.makedirs(os.path.dirname(output_map_path), exist_ok=True)
+
+# === Load the CSV ===
+df = pd.read_csv(csv_path)
+
+# === Create base map (satellite with labels) centered on first valid point ===
+start_lat = float(df.iloc[0]["Latitude"])
+start_lon = float(df.iloc[0]["Longitude"])
+m = folium.Map(location=[start_lat, start_lon], zoom_start=16, tiles=None)
+
+# === Add ESRI Satellite Imagery Layer ===
+folium.TileLayer(
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr='Esri Satellite',
+    name='Satellite',
+    overlay=False,
+    control=True
+).add_to(m)
+
+# === Add ESRI Label Overlay ===
+folium.TileLayer(
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    attr="Esri Labels",
+    name="Labels",
+    overlay=True,
+    control=True
+).add_to(m)
+
+# === Add a marker for each row ===
+for _, row in df.iterrows():
+    lat = row["Latitude"]
+    lon = row["Longitude"]
+    frame = row["Frame"]
+    location = row["Location"]
+    defects = row["Defect Categories"]
+    total = row["Total Defects"]
+
+    if pd.isna(lat) or pd.isna(lon) or str(lat).lower() == "nan" or str(lon).lower() == "nan":
+        continue
+
+    defects_str = str(defects).lower() if pd.notna(defects) else ""
+    marker_color = "red" if "pothole" in defects_str else "blue"
+
+    popup_html = f"""
+    <b>Frame:</b> {frame}<br>
+    <b>Location:</b> {location}<br>
+    <b>Defects:</b> {defects}<br>
+    <b>Total Defects:</b> {total}
+    """
+
+    folium.Marker(
+        location=[lat, lon],
+        popup=folium.Popup(popup_html, max_width=300),
+        icon=folium.Icon(color=marker_color, icon="info-sign")
+    ).add_to(m)
+
+# === Add layer control (toggle between satellite + labels) ===
+folium.LayerControl().add_to(m)
+
+# === Save the map ===
+m.save(output_map_path)
+print(f"✅ Map with satellite view and labels saved at: {output_map_path}")
