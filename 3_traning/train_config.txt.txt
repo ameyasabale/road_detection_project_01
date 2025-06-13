@@ -1,0 +1,8 @@
+Model: yolov12n.yaml
+Epochs: 100
+Image size: 640
+Batch size: 8
+Device: GPU (or CPU)
+Dataset: Roboflow-exported YOLOv12 format
+Classes: crack, damage surface, pothole, sign board, speed breaker
+Output: best.pt saved to 3_training/road_defect_model/weights/best.pt

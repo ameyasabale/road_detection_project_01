@@ -1,0 +1,102 @@
+#YOLOv12 + reverse geocoding
+
+
+import cv2
+import pandas as pd
+import requests
+import time
+import os
+from ultralytics import YOLO
+
+# === Paths ===
+model_path = r"C:\\Users\\M.P\\Downloads\\yolo12-road-pothole-main\\yolo12-road-pothole-main\\best.pt"
+frames_folder = r"C:\\Users\\M.P\\Downloads\\frames_all1\\extracted_frames"
+gps_csv = r"C:\\Users\\M.P\\Downloads\\sample\\gps_from_frame.csv"
+output_csv = r"C:\\Users\\M.P\\Downloads\\output003\\final_output1.csv"
+log_path = r"C:\\Users\\M.P\\Downloads\\output003\\geocoding_log1.txt"
+
+# === Load YOLO model and GPS CSV ===
+model = YOLO(model_path)
+gps_df = pd.read_csv(gps_csv)
+
+# === Location cache to avoid repeated lookups ===
+location_cache = {}
+
+def get_location(lat, lon, retries=3):
+    key = f"{lat:.6f},{lon:.6f}"
+    if key in location_cache:
+        return location_cache[key]
+
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    for attempt in range(retries):
+        try:
+            # Try Photon
+            url1 = f"https://photon.komoot.io/reverse?lat={lat}&lon={lon}"
+            res1 = requests.get(url1, headers=headers, timeout=5)
+            res1.raise_for_status()
+            data = res1.json()
+            if data.get('features'):
+                props = data['features'][0]['properties']
+                parts = [props.get('name'), props.get('city'), props.get('state'), props.get('country')]
+                address = ', '.join([p for p in parts if p])
+                if address:
+                    location_cache[key] = address
+                    return address
+
+            # Fallback: Nominatim
+            url2 = f"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}"
+            res2 = requests.get(url2, headers=headers, timeout=5)
+            res2.raise_for_status()
+            data2 = res2.json()
+            address = data2.get('display_name', '')
+            if address:
+                location_cache[key] = address
+                return address
+
+        except Exception as e:
+            with open(log_path, 'a') as log:
+                log.write(f"[Attempt {attempt+1}] Error for ({lat}, {lon}): {e}\n")
+            time.sleep(1.5)
+
+    location_cache[key] = "Unknown Location"
+    return "Unknown Location"
+
+# === Output container ===
+results = []
+
+# === Process each frame ===
+for _, row in gps_df.iterrows():
+    frame_name = row['Frame']
+    lat = row['Latitude']
+    lon = row['Longitude']
+    frame_path = os.path.join(frames_folder, frame_name)
+
+    if not os.path.exists(frame_path):
+        continue
+
+    # YOLO Detection
+    detections = model(frame_path)[0]
+    labels = [detections.names[int(cls)] for cls in detections.boxes.cls]
+
+    # Process result
+    unique_categories = list(set(labels))
+    defect_count = len(labels)
+    location = get_location(lat, lon)
+
+    results.append({
+        "Frame": frame_name,
+        "Latitude": lat,
+        "Longitude": lon,
+        "Location": location,
+        "Defect Categories": ', '.join(unique_categories) if unique_categories else "None",
+        "Total Defects": defect_count
+    })
+
+    time.sleep(1)  # Avoid API rate limit
+
+# === Save to CSV ===
+final_df = pd.DataFrame(results)
+final_df.to_csv(output_csv, index=False)
+
+print(f"✅ Final report saved to: {output_csv}")

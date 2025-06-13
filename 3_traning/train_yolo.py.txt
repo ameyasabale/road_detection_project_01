@@ -1,0 +1,17 @@
+from ultralytics import YOLO
+
+# === Load YOLOv12 model configuration ===
+model = YOLO("yolov12n.yaml")  # You can change this to yolov12s.yaml, etc.
+
+# === Train the model ===
+model.train(
+    data="2_labeling/roboflow_export/data.yaml",  # Path to your Roboflow data.yaml
+    epochs=100,
+    imgsz=640,
+    batch=8,
+    project="3_training",         # Output directory
+    name="road_defect_model",     # Subfolder for this run
+    device=0                      # Set to 0 for GPU, or 'cpu' if needed
+)
+
+

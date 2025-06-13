@@ -1,0 +1,52 @@
+import folium
+import pandas as pd
+import os
+
+from IPython.display import IFrame
+IFrame(output_map_path, width=900, height=600)
+
+
+# === INPUT PATHS ===
+csv_path = r"C:\\Users\\M.P\\Downloads\\road_project_final\\final_output1.csv"
+output_map_path = r"C:\\Users\\M.P\\Downloads\\gps map'\\map.html"
+os.makedirs(os.path.dirname(output_map_path), exist_ok=True)
+
+# === Load the CSV ===
+df = pd.read_csv(csv_path)
+
+# === Create base map centered on first valid point ===
+start_lat = float(df.iloc[0]["Latitude"])
+start_lon = float(df.iloc[0]["Longitude"])
+m = folium.Map(location=[start_lat, start_lon], zoom_start=14)
+
+# === Add a marker for each row ===
+for _, row in df.iterrows():
+    lat = row["Latitude"]
+    lon = row["Longitude"]
+    frame = row["Frame"]
+    location = row["Location"]
+    defects = row["Defect Categories"]
+    total = row["Total Defects"]
+
+    if pd.isna(lat) or pd.isna(lon) or str(lat).lower() == "nan" or str(lon).lower() == "nan":
+        continue
+
+    defects_str = str(defects).lower() if pd.notna(defects) else ""
+    marker_color = "red" if "pothole" in defects_str else "blue"
+
+    popup_html = f"""
+    <b>Frame:</b> {frame}<br>
+    <b>Location:</b> {location}<br>
+    <b>Defects:</b> {defects}<br>
+    <b>Total Defects:</b> {total}
+    """
+
+    folium.Marker(
+        location=[lat, lon],
+        popup=folium.Popup(popup_html, max_width=300),
+        icon=folium.Icon(color=marker_color, icon="info-sign")
+    ).add_to(m)
+
+# === Save and display ===
+m.save(output_map_path)
+print(f"✅ Map saved at: {output_map_path}")

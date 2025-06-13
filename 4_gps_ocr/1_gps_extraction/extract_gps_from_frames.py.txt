@@ -1,0 +1,52 @@
+
+#Extract lat/lon from images using OCR
+
+import cv2
+import pytesseract
+import re
+import os
+import csv
+import numpy as np
+from glob import glob
+
+# === CONFIGURATION ===
+input_folder = r"C:\Users\M.P\Downloads\frames_all1\extracted_frames"
+output_csv_path = r"C:\Users\M.P\Downloads\sample\gps_from_frames.csv"
+os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
+
+# === LOAD IMAGE PATHS ===
+image_paths = sorted(glob(os.path.join(input_folder, "*.jpg")) + glob(os.path.join(input_folder, "*.png")))
+
+# === FUNCTION: Extract GPS from Image ===
+def extract_gps_from_image(image):
+    height = image.shape[0]
+    gps_crop = image[int(height * 0.65):, :]  # Crop bottom 35%
+
+    gray = cv2.cvtColor(gps_crop, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    _, thresh = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    inverted = cv2.bitwise_not(thresh)
+    dilated = cv2.dilate(inverted, np.ones((1, 1), np.uint8), iterations=1)
+
+    ocr_text = pytesseract.image_to_string(dilated, config="--psm 6")
+    ocr_text = ocr_text.replace('\n', ' ').replace('Lat', '').replace('Long', '')
+    ocr_text = re.sub(r'[^\x00-\x7F]+', ' ', ocr_text)
+
+    match = re.search(r'([-+]?\d{1,2}\.\d{4,})[^0-9]+([-+]?\d{1,3}\.\d{4,})', ocr_text)
+    latitude = match.group(1) if match else "NaN"
+    longitude = match.group(2) if match else "NaN"
+    
+    return latitude, longitude
+
+# === PROCESS IMAGES AND WRITE TO CSV ===
+with open(output_csv_path, 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(["Frame", "Latitude", "Longitude"])
+
+    for i, path in enumerate(image_paths, 1):
+        image = cv2.imread(path)
+        lat, lon = extract_gps_from_image(image)
+        writer.writerow([os.path.basename(path), lat, lon])
+        print(f"[{i}/{len(image_paths)}] ✅ {os.path.basename(path)}: ({lat}, {lon})")
+
+print(f"\n📍 GPS data saved to: {output_csv_path}")

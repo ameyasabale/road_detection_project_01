@@ -1,0 +1,67 @@
+import os
+import cv2
+import pandas as pd
+from ultralytics import YOLO
+
+# === Your actual paths ===
+model_path = r"C:\Users\M.P\Downloads\yolo12-road-pothole-main\yolo12-road-pothole-main\best.pt"
+frames_folder = r"C:\Users\M.P\Downloads\frames_all1\extracted_frames"
+csv_path = r"C:\Users\M.P\Downloads\road_project_final\final_output1.csv"
+output_folder = r"C:\Users\M.P\Downloads\output03"
+os.makedirs(output_folder, exist_ok=True)
+
+# === Load model and CSV ===
+model = YOLO(model_path)
+class_names = model.names  # class index → name
+df = pd.read_csv(csv_path)
+
+detections_per_class = {name: 0 for name in class_names.values()}
+
+# === Process each frame ===
+for idx, row in df.iterrows():
+    frame_name = row['Frame']
+    location = row.get('Location', 'Location unavailable')
+    frame_path = os.path.join(frames_folder, frame_name)
+
+    if not os.path.exists(frame_path):
+        print(f"❌ Missing: {frame_path}")
+        continue
+
+    frame = cv2.imread(frame_path)
+    frame = cv2.resize(frame, (1020, 600))
+
+    # Run detection
+    results = model(frame)[0]
+    if results.boxes is not None:
+        boxes = results.boxes.xyxy.cpu().numpy().astype(int)
+        class_ids = results.boxes.cls.int().cpu().tolist()
+
+        for box, class_id in zip(boxes, class_ids):
+            x1, y1, x2, y2 = box
+            label = class_names[class_id]
+            detections_per_class[label] += 1
+            color = (0, 255, 0) if label.lower() == 'pothole' else (255, 255, 0)
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+    # Add location info at top
+    cv2.putText(frame, f"Location: {location}", (10, 25),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+
+    # Class counts on frame
+    y_offset = 50
+    for cls, count in detections_per_class.items():
+        if count > 0:
+            text = f"{cls.capitalize()}: {count}"
+            cv2.putText(frame, text, (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 255), 2)
+            y_offset += 25
+
+    # Save result
+    output_path = os.path.join(output_folder, frame_name)
+    cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+print("\n✅ All frames processed and saved to:", output_folder)
+print("📊 Final Detection Summary:")
+for cls, count in detections_per_class.items():
+    print(f"🔹 {cls}: {count}")
